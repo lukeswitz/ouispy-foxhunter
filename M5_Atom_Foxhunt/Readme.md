@@ -61,9 +61,14 @@ WhenUTC,TargetMAC,Address,Name,RSSI,Lat,Lon,AltM,HDOP,Type
 
 ## LED Indicators
 
-- Triple green: first acquisition
-- Orange: proximity blink (interval based on RSSI)
-- Purple: acquiring GPS
+# LED Pattern Meanings
+
+| LED Behavior | Meaning |
+|--------------|---------|
+| Usually off | Default state when no target is detected |
+| Orange blinking | Target detected (blinks faster when closer) |
+| Green triple blink | Target acquired for the first time |
+| Purple pulsing | Waiting for GPS fix (pulses faster with more satellites) |
 
 ---
 
