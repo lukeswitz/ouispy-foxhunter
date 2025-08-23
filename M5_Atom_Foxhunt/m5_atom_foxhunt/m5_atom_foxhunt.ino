@@ -36,6 +36,7 @@ Preferences preferences;
 NimBLEScan* pBLEScan;
 
 String targetMAC = "";
+bool hasTargetOUI = false;
 uint8_t targetOUI[3];  // first 3 bytes of configured MAC
 unsigned long configStartTime = 0;
 unsigned long lastConfigActivity = 0;
@@ -49,6 +50,14 @@ bool firstDetection = true;
 
 // LED blink synchronization
 volatile bool newTargetDetected = false;
+
+// Helper for matching
+String normalizeMAC(String mac) {
+  mac.trim();
+  mac.replace("-", ":");
+  mac.toUpperCase();
+  return mac;
+}
 
 // ================================
 // RSSI-based LED Blink Patterns
@@ -133,7 +142,7 @@ void handleProximityBlinking() {
 // ================================
 void saveConfiguration() {
   preferences.begin("tracker", false);
-  preferences.putString("targetMAC", targetMAC);
+  preferences.putString("targetMAC", normalizeMAC(targetMAC));
   preferences.end();
   Serial.println("Configuration saved to NVS");
 }
@@ -143,15 +152,19 @@ void loadConfiguration() {
   targetMAC = preferences.getString("targetMAC", "");
   preferences.end();
 
-  if (targetMAC.length() > 0) {
+  targetMAC = normalizeMAC(targetMAC);
+  hasTargetOUI = false;
+
+  if (targetMAC.length() == 17) {
     Serial.println("Configuration loaded from NVS");
     Serial.println("Target MAC: " + targetMAC);
     int b0, b1, b2;
-    sscanf(targetMAC.substring(0, 8).c_str(),
-           "%02x:%02x:%02x", &b0, &b1, &b2);
-    targetOUI[0] = (uint8_t)b0;
-    targetOUI[1] = (uint8_t)b1;
-    targetOUI[2] = (uint8_t)b2;
+    if (sscanf(targetMAC.substring(0, 8).c_str(), "%02x:%02x:%02x", &b0, &b1, &b2) == 3) {
+      targetOUI[0] = (uint8_t)b0;
+      targetOUI[1] = (uint8_t)b1;
+      targetOUI[2] = (uint8_t)b2;
+      hasTargetOUI = true;
+    }
   }
 }
 
@@ -322,7 +335,7 @@ void startConfigMode() {
     lastConfigActivity = millis();
 
     if (request->hasParam("targetMAC", true)) {
-      targetMAC = request->getParam("targetMAC", true)->value();
+      targetMAC = normalizeMAC(request->getParam("targetMAC", true)->value());
       targetMAC.trim();
 
       Serial.println("Target MAC received: " + targetMAC);
@@ -405,9 +418,9 @@ class MyScanCallbacks : public NimBLEScanCallbacks {
     deviceMAC.toUpperCase();
 
     // Serial.printf("LOOKING FOR: %s\n", targetMAC.c_str());
-    // Serial.printf("DETECTED: %s (RSSI: %d)\n", deviceMAC.c_str(), advertisedDevice->getRSSI());
+    //  Serial.printf("DETECTED: %s (RSSI: %d)\n", deviceMAC.c_str(), advertisedDevice->getRSSI());
 
-    if (deviceMAC == targetMAC || isRandomizedVariant(deviceMAC)) {
+    if (deviceMAC == targetMAC) {
       currentRSSI = advertisedDevice->getRSSI();
       lastTargetSeen = millis();
       targetDetected = true;
@@ -416,8 +429,8 @@ class MyScanCallbacks : public NimBLEScanCallbacks {
     }
   }
 
-  bool isRandomizedVariant(const String& mac) {
-    if (mac.length() != 17) return false;   // quick sanity check
+  bool isRandomizedVariant(const String& mac) { // TODO get this working correctly 
+    if (mac.length() != 17) return false;  // quick sanity check
 
     int b0, b1, b2;
     sscanf(mac.substring(0, 8).c_str(),
@@ -431,7 +444,7 @@ class MyScanCallbacks : public NimBLEScanCallbacks {
     uint8_t targetFirst = targetOUI[0];
     uint8_t observedFirst = oui[0];
     return ((targetFirst & 0xFD) == (observedFirst & 0xFD));
-}
+  }
 
   void onScanEnd(const NimBLEScanResults& results, int reason) override {
     Serial.printf("Scan ended, reason: %d, found %d devices\n", reason, results.getCount());
@@ -439,8 +452,8 @@ class MyScanCallbacks : public NimBLEScanCallbacks {
 };
 
 void startTrackingMode() {
-  if (targetMAC.length() == 0) {
-    Serial.println("No target MAC configured, staying in config mode");
+  if (targetMAC.length() != 17) {
+    Serial.println("Invalid or empty target MAC; staying in config mode");
     return;
   }
 
