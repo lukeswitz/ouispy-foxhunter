@@ -61,8 +61,6 @@ WhenUTC,TargetMAC,Address,Name,RSSI,Lat,Lon,AltM,HDOP,Type
 
 ## LED Indicators
 
-# LED Pattern Meanings
-
 | LED Behavior | Meaning |
 |--------------|---------|
 | Usually off | Default state when no target is detected |
