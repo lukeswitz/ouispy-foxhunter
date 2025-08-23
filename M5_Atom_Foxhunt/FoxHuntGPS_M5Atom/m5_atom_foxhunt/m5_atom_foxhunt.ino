@@ -7,6 +7,7 @@
 #include <NimBLEAdvertisedDevice.h>
 #include <esp_wifi.h>
 #include <FastLED.h>
+#include <esp_task_wdt.h>
 
 // ================================
 // Hardware Configuration - M5 Atom Lite
@@ -28,6 +29,23 @@ enum OperatingMode {
   CONFIG_MODE,
   TRACKING_MODE
 };
+
+// ================================
+// WiFi Scanning Configuration
+// ================================
+int wifiChannels[14] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 };  // configure for your region
+int wifiChanCount = 11;
+int timePerChannel[14] = { 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 200, 50, 50, 50 };
+bool adaptiveScan = true;
+unsigned long lastWifiScanTick = 0;
+unsigned long wifiScanPeriodMs = 300;  // scan one channel every 300 ms
+int wifiChanIdx = 0;
+
+// ================================
+// FreeRTOS Task Handles
+// ================================
+TaskHandle_t bleTaskHandle = NULL;
+TaskHandle_t wifiTaskHandle = NULL;
 
 // Global variables
 OperatingMode currentMode = CONFIG_MODE;
@@ -408,6 +426,23 @@ void startConfigMode() {
 }
 
 // ================================
+// WiFi Scanning Functions
+// ================================
+void updateTimePerChannel(int channel, int networksFound) {
+  const int FEW_NETWORKS_THRESHOLD = 1;
+  const int MANY_NETWORKS_THRESHOLD = 7;
+  const int TIME_INCREMENT = 50;
+  const int MAX_TIME = 500;
+  const int MIN_TIME = 50;
+
+  if (networksFound >= MANY_NETWORKS_THRESHOLD) {
+    timePerChannel[channel - 1] = min(timePerChannel[channel - 1] + TIME_INCREMENT, MAX_TIME);
+  } else if (networksFound <= FEW_NETWORKS_THRESHOLD) {
+    timePerChannel[channel - 1] = max(timePerChannel[channel - 1] - TIME_INCREMENT, MIN_TIME);
+  }
+}
+
+// ================================
 // BLE Scan Callback Class (NimBLE 2.x)
 // ================================
 class MyScanCallbacks : public NimBLEScanCallbacks {
@@ -429,8 +464,8 @@ class MyScanCallbacks : public NimBLEScanCallbacks {
     }
   }
 
-  bool isRandomizedVariant(const String& mac) { // TODO get this working correctly 
-    if (mac.length() != 17) return false;  // quick sanity check
+  bool isRandomizedVariant(const String& mac) {  // TODO get this working correctly
+    if (mac.length() != 17) return false;        // quick sanity check
 
     int b0, b1, b2;
     sscanf(mac.substring(0, 8).c_str(),
@@ -478,11 +513,39 @@ void startTrackingMode() {
   pBLEScan->setMaxResults(0);           // Don't store results to save memory
   pBLEScan->setDuplicateFilter(false);  // Allow duplicate detections for RSSI updates
 
+  // Initialize WiFi for scanning
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+
+  // Create BLE scanning task on Core 1 (application core)
+  xTaskCreatePinnedToCore(
+    bleTask,         // Task function
+    "BLETask",       // Name of task
+    4096,            // Stack size of task
+    NULL,            // Parameter of the task
+    1,               // Priority of the task
+    &bleTaskHandle,  // Task handle to track the task
+    1                // Core where the task should run (1 = application core)
+  );
+
+  // Create WiFi scanning task on Core 0 (protocol core)
+  xTaskCreatePinnedToCore(
+    wifiTask,         // Task function
+    "WiFiTask",       // Name of task
+    4096,             // Stack size of task
+    NULL,             // Parameter of the task
+    1,                // Priority of the task
+    &wifiTaskHandle,  // Task handle to track the task
+    0                 // Core where the task should run (0 = protocol core)
+  );
+
   // Start continuous passive scanning
   pBLEScan->start(0, false, true);
 
   Serial.println("BLE PASSIVE tracking started!");
-  Serial.println("This will detect ALL BLE advertisements including hidden/random devices");
+  Serial.println("WiFi scanning started!");
+  Serial.println("Dual-core scanning (BLE on Core 1, WiFi on Core 0)");
 
   // Ready signal
   readySignal();
@@ -494,9 +557,7 @@ void startTrackingMode() {
 void setup() {
   Serial.begin(115200);
   Serial.println("\n=== M5 ATOM LITE FOXHUNT ===");
-  Serial.println("Hardware: M5 Atom Lite ESP32");
-  Serial.println("LED: GPIO27 (Single RGB LED)");
-  Serial.println("Libraries: ESP32Async v3.8.0, NimBLE 2.x");
+  Serial.println("Libraries: ESP32Async v3.8.0, NimBLE 2.4.3");
   Serial.println("Initializing...\n");
 
   // Initialize LED
@@ -544,6 +605,70 @@ void setup() {
 
   // Start in configuration mode
   startConfigMode();
+}
+
+// ================================
+// Task Functions
+// ================================
+void bleTask(void* parameter) {
+  Serial.println("BLE scanning task running on Core " + String(xPortGetCoreID()));
+
+  while (true) {
+    if (currentMode == TRACKING_MODE) {
+      // BLE task only needs to monitor when scan completes and restart as needed
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+    } else {
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+  }
+}
+
+void wifiTask(void* parameter) {
+  Serial.println("WiFi scanning task running on Core " + String(xPortGetCoreID()));
+
+  while (true) {
+    if (currentMode == TRACKING_MODE) {
+      unsigned long now = millis();
+
+      if (now - lastWifiScanTick >= wifiScanPeriodMs) {
+        lastWifiScanTick = now;
+
+        int ch = wifiChannels[wifiChanIdx];
+        int dwell = timePerChannel[ch - 1];
+
+        // Perform a single-channel scan
+        int found = WiFi.scanNetworks(false, true, false, dwell, ch);
+
+        for (int i = 0; i < found; i++) {
+          String bssid = WiFi.BSSIDstr(i);
+          String ssid = WiFi.SSID(i);
+          int rssi = WiFi.RSSI(i);
+
+          // Check if this is our target device
+          if (normalizeMAC(bssid) == targetMAC) {
+            currentRSSI = rssi;
+            lastTargetSeen = millis();
+            targetDetected = true;
+            newTargetDetected = true;
+            Serial.println("*** TARGET MATCH FOUND ON WIFI! ***");
+            Serial.println("SSID: " + ssid + ", RSSI: " + String(rssi) + ", Channel: " + String(ch));
+          }
+        }
+
+        // Adaptive tuning if enabled
+        if (adaptiveScan) {
+          updateTimePerChannel(ch, found);
+        }
+
+        WiFi.scanDelete();  // Free memory
+        wifiChanIdx = (wifiChanIdx + 1) % wifiChanCount;
+      }
+
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+    } else {
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+  }
 }
 
 // ================================
