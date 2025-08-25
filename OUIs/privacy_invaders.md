@@ -2,9 +2,10 @@
 
 List of MAC OUIs for vendors commonly tied to surveillance/“privacy-invader” gear: 
 
-Axon/TASER, in‑car video/ALPR (WatchGuard/Motorola, Digital Ally, Getac, Panasonic i‑PRO, Flock, Verkada), pro CCTV/IP cams (Hikvision, Dahua, Axis, Hanwha, Avigilon, Bosch, Pelco, Vivotek, Uniview), and consumer/SMB cams/doorbells (D‑Link, TP‑Link, Ubiquiti, Reolink, Amcrest, EZVIZ, Yi, Arlo, Wyze, Eufy), plus DJI
+Axon/TASER, in‑car video/ALPR (WatchGuard/Motorola, Digital Ally, Getac, Panasonic i‑PRO, Flock, Verkada), pro CCTV/IP cams (Hikvision, Dahua, Axis, Hanwha, Avigilon, Bosch, DJI, Pelco, Vivotek, Uniview), and consumer/SMB cams/doorbells (D‑Link, TP‑Link, Ubiquiti, Reolink, Amcrest, EZVIZ, Yi, Arlo, Wyze, Eufy), Body worn Utility Inc.
 ```
 00:25:DF
+00:09:BC
 00:1F:55
 00:0F:13
 00:19:86
