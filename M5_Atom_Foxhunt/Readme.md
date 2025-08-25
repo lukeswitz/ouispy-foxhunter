@@ -33,7 +33,7 @@ Related fork [Detector variant](https://github.com/lukeswitz/ouispy-detector/tre
 ## What It Does
 
 - Tracks a single target MAC in BLE and optionally Wi‑Fi
-- BLE kept passive; optional time‑sliced Wi‑Fi channel hopping
+- BLE passive scan; optional time‑sliced Wi‑Fi channel hopping
 - LED proximity blink rate scales with RSSI (faster = stronger)
 - Logs encounters (BLE or Wi‑Fi) with UTC and GPS
 
@@ -48,13 +48,13 @@ WhenUTC,TargetMAC,Address,Name,RSSI,Lat,Lon,AltM,HDOP,Type
 ## Quick Start
 
 1) Insert FAT32 microSD and power on  
-2) Wait for GPS fix (purple LED blink)  
+2) Wait for GPS fix (purple LED blink) or press button to skip
 3) Connect to SoftAP:
    - SSID: `snoopuntothem`
    - Password: `astheysnoopuntous`
    - Open the IP printed to Serial to access Web UI
 4) Enter Target MAC `AA:BB:CC:DD:EE:FF` and Save → tracking starts  
-5) LED blinks faster as RSSI increases; CSV created at:
+5) LED blinks turn yellow & faster as RSSI increases; CSV created at:
    - `/FoxHunt-YYYY-MM-DD-N.csv`
 
 ---
@@ -63,10 +63,10 @@ WhenUTC,TargetMAC,Address,Name,RSSI,Lat,Lon,AltM,HDOP,Type
 
 | LED Behavior | Meaning |
 |--------------|---------|
-| Usually off | Default state when no target is detected |
-| Orange blinking | Target detected (blinks faster when closer) |
-| Green triple blink | Target acquired for the first time |
-| Purple pulsing | Waiting for GPS fix (pulses faster with more satellites) |
+| Green  | Config & Default state when no target is detected |
+| Yellow | Target detected (blinks faster when closer) |
+| Triple Blink | Target acquired for the first time |
+| Purple Pulsing | Waiting for GPS fix (pulses faster with more satellites) |
 
 ---
 
