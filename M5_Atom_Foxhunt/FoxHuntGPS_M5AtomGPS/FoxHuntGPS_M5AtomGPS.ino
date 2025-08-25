@@ -104,8 +104,12 @@ void ledTask(void* parameter) {
   int brightness = 0;
   bool ascending = true;
   
+  Serial.printf("Initial LED pattern: %d\n", currentLEDPattern);
+  
   while (true) {
     unsigned long currentMillis = millis();
+    
+    static unsigned long lastPatternLog = 0;
     
     switch (currentLEDPattern) {
       case LED_OFF:
@@ -115,7 +119,7 @@ void ledTask(void* parameter) {
         break;
         
       case LED_STATUS_BLINK:
-        if (currentMillis - previousMillis >= 2500) {
+        if (currentMillis - previousMillis >= 1000) {
           leds[0] = CRGB::Green;
           FastLED.show();
           vTaskDelay(60 / portTICK_PERIOD_MS);
@@ -146,6 +150,7 @@ void ledTask(void* parameter) {
         if (!patternActive) {
           patternStartTime = currentMillis;
           patternActive = true;
+          Serial.println("Single blink started");
         }
         {
           unsigned long elapsed = currentMillis - patternStartTime;
@@ -158,17 +163,19 @@ void ledTask(void* parameter) {
           } else {
             leds[0] = CRGB::Black;
             FastLED.show();
-            currentLEDPattern = LED_OFF;
+            currentLEDPattern = LED_STATUS_BLINK; // Return to status blinking after single blink
             patternActive = false;
+            Serial.println("Single blink completed, returning to status");
           }
         }
         break;
         
-      case LED_TRIPLE_BLINK: // Green x3
+      case LED_TRIPLE_BLINK:
         {
           if (!patternActive) {
             patternStartTime = currentMillis;
             patternActive = true;
+            Serial.println("Triple blink started");
           }
           
           unsigned long elapsed = currentMillis - patternStartTime;
@@ -194,8 +201,9 @@ void ledTask(void* parameter) {
           } else {
             leds[0] = CRGB::Black;
             FastLED.show();
-            currentLEDPattern = LED_OFF;
+            currentLEDPattern = LED_STATUS_BLINK; // Return to status blinking after triple blink
             patternActive = false;
+            Serial.println("Triple blink completed, returning to status");
           }
         }
         break;
@@ -205,14 +213,17 @@ void ledTask(void* parameter) {
           if (!patternActive) {
             patternStartTime = currentMillis;
             patternActive = true;
+            Serial.println("Ready signal started");
           }
           
           unsigned long elapsed = currentMillis - patternStartTime;
           if (elapsed > 2000) { // 2 second fade
             leds[0] = CRGB::Black;
             FastLED.show();
-            currentLEDPattern = LED_OFF;
+            // Important: Transition to status blink, not OFF
+            currentLEDPattern = LED_STATUS_BLINK;
             patternActive = false;
+            Serial.println("Ready signal completed, switching to status blink");
           } else {
             // Blue fade up and down
             int brightness = (elapsed < 1000) ? (elapsed * 255 / 1000) : (255 - ((elapsed - 1000) * 255 / 1000));
@@ -222,7 +233,7 @@ void ledTask(void* parameter) {
         }
         break;
         
-      case LED_GPS_WAIT: // Purple variable brightness
+      case LED_GPS_WAIT:
         {
           // Get current satellite count
           int numSat = ledPatternParam;
@@ -251,6 +262,9 @@ void ledTask(void* parameter) {
             leds[0] = CRGB(brightness, 0, brightness);  // Purple
             FastLED.show();
             previousMillis = currentMillis;
+            if (currentMillis % 5000 == 0) {
+              Serial.printf("GPS Wait - Sats: %d\n", numSat);
+            }
           }
         }
         break;
@@ -270,34 +284,40 @@ int calculateBlinkInterval(int rssi) {
   return 3000;
 }
 
+void setLEDPattern(LEDPattern newPattern, int param = 0) {
+  LEDPattern oldPattern = currentLEDPattern;
+  currentLEDPattern = newPattern;
+  ledPatternParam = param;
+  delay(5); // cool it down
+}
+
 void triggerTripleBlink() {
-  currentLEDPattern = LED_TRIPLE_BLINK;
+  setLEDPattern(LED_TRIPLE_BLINK);
 }
 
 void triggerReadySignal() {
-  currentLEDPattern = LED_READY_SIGNAL;
+  setLEDPattern(LED_READY_SIGNAL);
 }
 
 void startGPSWaitPattern(int numSatellites) {
-  ledPatternParam = numSatellites;
-  currentLEDPattern = LED_GPS_WAIT;
+  setLEDPattern(LED_GPS_WAIT, numSatellites);
 }
 
 void stopGPSWaitPattern() {
-  currentLEDPattern = LED_OFF;
+  setLEDPattern(LED_STATUS_BLINK);
 }
 
 void startStatusBlinking() {
-  currentLEDPattern = LED_STATUS_BLINK;
+  setLEDPattern(LED_STATUS_BLINK);
 }
 
 void startProximityBlinking(int rssi) {
-  ledPatternParam = rssi;
-  currentLEDPattern = LED_PROXIMITY_BLINK;
+  setLEDPattern(LED_PROXIMITY_BLINK, rssi);
 }
 
 void stopProximityBlinking() {
-  currentLEDPattern = LED_OFF;
+  startStatusBlinking();
+  Serial.println("Proximity blinking stopped, switching to status blink");
 }
 
 String normalizeMAC(String mac) {
@@ -308,12 +328,11 @@ String normalizeMAC(String mac) {
 }
 
 // ================================
-// SD Logging (Wigler-style CSV)
+// SD Logging
 // ================================
 char fileName[64];
 bool sdReady = false;
 
-// CSV header same family style as Wigle header then columns
 void initializeFile() {
   int fileNumber = 0;
   bool isNewFile = false;
@@ -502,15 +521,15 @@ button{padding:12px 16px;border:0;border-radius:8px;cursor:pointer;margin:8px}
 .info{background:linear-gradient(135deg,#182848,#4b6cb7);color:#fff}
 </style></head><body><div class="container">
 <h1>M5 ATOM FOXHUNT</h1>
-<p>Enter a BLE/WiFi target MAC. LED blinks faster as RSSI increases. Encounters are logged to SD with GPS.</p>
+<p>Enter a BLE/WiFi target MAC. LED blinks faster as RSSI increases.</p>
 <form method="POST" action="/save">
 <label>Target MAC</label>
-<textarea name="targetMAC" placeholder="XX:XX:XX:XX:XX:XX (e.g. )html)html";
+<textarea name="targetMAC" placeholder="XX:XX:XX:XX:XX:XX";
 
   // Insert randomMAC into placeholder example
   html += randomMAC;
 
-  html += R"html(">)html)html";
+  html += R"html(">)html";
 
   // Insert current target value inside the textarea
   html += targetMAC;
@@ -576,6 +595,8 @@ void startConfigMode() {
   });
 
   server.begin();
+
+
 
   Serial.println("\n=== CONFIG MODE ===");
   Serial.print("AP: ");
@@ -661,7 +682,6 @@ void wifiTask(void* parameter) {
           if (found >= MANY) timePerChannel[ch - 1] = min(timePerChannel[ch - 1] + INC, MAXT);
           else if (found <= FEW) timePerChannel[ch - 1] = max(timePerChannel[ch - 1] - INC, MINT);
         }
-
         WiFi.scanDelete();  // free results
         wifiChanIdx = (wifiChanIdx + 1) % wifiChanCount;
       }
@@ -697,6 +717,7 @@ class MyScanCallbacks : public NimBLEScanCallbacks {
       }
     }
   }
+  
   void onScanEnd(const NimBLEScanResults& results, int reason) override {
     Serial.printf("Scan end reason=%d, count=%d\n", reason, results.getCount());
   }
@@ -728,38 +749,10 @@ void startTrackingMode() {
   pBLEScan->setMaxResults(0);
   pBLEScan->setDuplicateFilter(false);
 
-  // Create GPS processing task on Core 1 (high priority)
-  xTaskCreatePinnedToCore(
-    gpsTask,         // Task function
-    "GPSTask",       // Name of task
-    4096,            // Stack size
-    NULL,            // Parameter
-    2,               // Priority (higher)
-    &gpsTaskHandle,  // Task handle
-    1                // Core 1 (application core)
-  );
-
-  // Create BLE scanning task on Core 1 (lower priority than GPS)
-  xTaskCreatePinnedToCore(
-    bleTask,         // Task function
-    "BLETask",       // Name of task
-    4096,            // Stack size
-    NULL,            // Parameter
-    1,               // Priority (lower)
-    &bleTaskHandle,  // Task handle
-    1                // Core 1
-  );
-
-  // Create WiFi scanning task on Core 0
-  xTaskCreatePinnedToCore(
-    wifiTask,         // Task function
-    "WiFiTask",       // Name of task
-    4096,             // Stack size
-    NULL,             // Parameter
-    1,                // Priority
-    &wifiTaskHandle,  // Task handle
-    0                 // Core 0 (protocol core)
-  );
+  // Create tasks for scanning
+  xTaskCreatePinnedToCore(gpsTask, "GPSTask", 4096, NULL, 2, &gpsTaskHandle, 1);
+  xTaskCreatePinnedToCore(bleTask, "BLETask", 4096, NULL, 1, &bleTaskHandle, 1);
+  xTaskCreatePinnedToCore(wifiTask, "WiFiTask", 4096, NULL, 1, &wifiTaskHandle, 0);
 
   // Start BLE scanning
   pBLEScan->start(0, false, true);
@@ -767,7 +760,12 @@ void startTrackingMode() {
   Serial.println("WiFi scanning started!");
   Serial.println("Dual-core scanning system active");
 
+  // Set the LED patterns with small delay between them
+  startStatusBlinking();
+  delay(100);
   triggerReadySignal();
+  
+  Serial.printf("LED Pattern set to: %d\n", currentLEDPattern);
 }
 
 // ================================
@@ -833,6 +831,7 @@ void setup() {
   esp_wifi_set_mac(WIFI_IF_STA, newMAC);
   esp_wifi_set_mac(WIFI_IF_AP, newMAC);
 
+
   // Load target
   loadConfiguration();
 
@@ -848,7 +847,6 @@ void setup() {
 // Loop
 // ================================
 void loop() {
-  // Button handling remains in main loop
   M5.update();
   if (M5.Btn.wasPressed()) {
     buttonLedState = !buttonLedState;
@@ -894,10 +892,11 @@ void loop() {
     // Update proximity blinking (via LED task)
     if (targetDetected && (now - lastTargetSeen < 5000)) {
       startProximityBlinking(currentRSSI);
-    } else if (now - lastTargetSeen >= 5000) {
+    } else if (now - lastTargetSeen >= 5000 && currentLEDPattern != LED_STATUS_BLINK) {
       targetDetected = false;
       firstDetection = true;
-      stopProximityBlinking();
+      startStatusBlinking();
+      Serial.println("Target lost, returning to status blink");
     }
   }
 

@@ -30,6 +30,16 @@ enum OperatingMode {
   TRACKING_MODE
 };
 
+// LED Pattern States
+enum LEDPattern {
+  LED_OFF,
+  LED_STATUS_BLINK,
+  LED_PROXIMITY_BLINK,
+  LED_SINGLE_BLINK,
+  LED_TRIPLE_BLINK,
+  LED_READY_SIGNAL
+};
+
 // ================================
 // WiFi Scanning Configuration
 // ================================
@@ -46,6 +56,7 @@ int wifiChanIdx = 0;
 // ================================
 TaskHandle_t bleTaskHandle = NULL;
 TaskHandle_t wifiTaskHandle = NULL;
+TaskHandle_t ledTaskHandle = NULL;
 
 // Global variables
 OperatingMode currentMode = CONFIG_MODE;
@@ -66,6 +77,10 @@ int currentRSSI = -100;
 unsigned long lastTargetSeen = 0;
 bool firstDetection = true;
 
+// LED pattern control - volatile as accessed from different cores
+volatile LEDPattern currentLEDPattern = LED_OFF;
+volatile int ledPatternParam = 0;  // For RSSI value, etc.
+
 // LED blink synchronization
 volatile bool newTargetDetected = false;
 
@@ -73,8 +88,168 @@ volatile bool newTargetDetected = false;
 String normalizeMAC(String mac) {
   mac.trim();
   mac.replace("-", ":");
+  mac.replace(" ", "");
   mac.toUpperCase();
   return mac;
+}
+
+// ================================
+// LED Task Function
+// ================================
+void ledTask(void* parameter) {
+  Serial.println("LED control task running on Core " + String(xPortGetCoreID()));
+  
+  unsigned long patternStartTime = 0;
+  bool patternActive = false;
+  unsigned long previousMillis = 0;
+  int brightness = 0;
+  bool ascending = true;
+  bool debugPrint = true;
+  
+  while (true) {
+    unsigned long currentMillis = millis();
+    
+    // Debug the current pattern occasionally
+    if (debugPrint && currentMillis - previousMillis >= 5000) {
+      Serial.printf("Current LED pattern: %d, param: %d\n", currentLEDPattern, ledPatternParam);
+      debugPrint = true;
+    }
+    
+    switch (currentLEDPattern) {
+      case LED_OFF:
+        leds[0] = CRGB::Black;
+        FastLED.show();
+        patternActive = false;
+        break;
+        
+      case LED_STATUS_BLINK:
+        if (currentMillis - previousMillis >= 1000) {
+          leds[0] = CRGB::Green;
+          FastLED.show();
+          vTaskDelay(60 / portTICK_PERIOD_MS);
+          leds[0] = CRGB::Black;
+          FastLED.show();
+          previousMillis = currentMillis;
+          debugPrint = true;
+        }
+        break;
+        
+      case LED_PROXIMITY_BLINK:
+        {
+          // Calculate blink interval based on RSSI (stored in ledPatternParam)
+          int rssi = ledPatternParam;
+          int interval = calculateBlinkInterval(rssi);
+          
+          if (currentMillis - previousMillis >= interval) {
+            leds[0] = CRGB::Orange;
+            FastLED.show();
+            vTaskDelay(80 / portTICK_PERIOD_MS);
+            leds[0] = CRGB::Black;
+            FastLED.show();
+            previousMillis = currentMillis;
+            debugPrint = true;
+          }
+        }
+        break;
+        
+      case LED_SINGLE_BLINK: 
+        if (!patternActive) {
+          patternStartTime = currentMillis;
+          patternActive = true;
+          Serial.println("Single blink started");
+        }
+        {
+          unsigned long elapsed = currentMillis - patternStartTime;
+          if (elapsed <= 100) {
+            leds[0] = CRGB::Red;
+            FastLED.show();
+          } else if (elapsed <= 200) {
+            leds[0] = CRGB::Black;
+            FastLED.show();
+          } else {
+            leds[0] = CRGB::Black;
+            FastLED.show();
+            currentLEDPattern = LED_STATUS_BLINK; // Return to status blinking after single blink
+            patternActive = false;
+            Serial.println("Single blink completed, returning to status");
+          }
+        }
+        break;
+        
+      case LED_TRIPLE_BLINK:
+        {
+          if (!patternActive) {
+            patternStartTime = currentMillis;
+            patternActive = true;
+            Serial.println("Triple blink started");
+          }
+          
+          unsigned long elapsed = currentMillis - patternStartTime;
+          
+          if (elapsed < 100) {
+            leds[0] = CRGB::Green;
+            FastLED.show();
+          } else if (elapsed < 200) {
+            leds[0] = CRGB::Black;
+            FastLED.show();
+          } else if (elapsed < 300) {
+            leds[0] = CRGB::Green;
+            FastLED.show();
+          } else if (elapsed < 400) {
+            leds[0] = CRGB::Black;
+            FastLED.show();
+          } else if (elapsed < 500) {
+            leds[0] = CRGB::Green;
+            FastLED.show();
+          } else if (elapsed < 600) {
+            leds[0] = CRGB::Black;
+            FastLED.show();
+          } else {
+            leds[0] = CRGB::Black;
+            FastLED.show();
+            // Important: return to status blinking, not OFF
+            currentLEDPattern = LED_STATUS_BLINK;
+            patternActive = false;
+            Serial.println("Triple blink completed, returning to status");
+          }
+        }
+        break;
+        
+      case LED_READY_SIGNAL:
+        {
+          if (!patternActive) {
+            patternStartTime = currentMillis;
+            patternActive = true;
+            Serial.println("Ready signal started");
+          }
+          
+          unsigned long elapsed = currentMillis - patternStartTime;
+          if (elapsed > 2000) { // 2 second fade
+            leds[0] = CRGB::Black;
+            FastLED.show();
+            // Important: transition to status blinking, not OFF
+            currentLEDPattern = LED_STATUS_BLINK;
+            patternActive = false;
+            Serial.println("Ready signal completed, returning to status");
+          } else {
+            // Blue fade up and down
+            int brightness = (elapsed < 1000) ? (elapsed * 255 / 1000) : (255 - ((elapsed - 1000) * 255 / 1000));
+            leds[0] = CRGB(0, 0, brightness);
+            FastLED.show();
+          }
+        }
+        break;
+    }
+    
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+  }
+}
+
+// Protected pattern setter with logging
+void setLEDPattern(LEDPattern newPattern, int param = 0) {
+  LEDPattern oldPattern = currentLEDPattern;
+  currentLEDPattern = newPattern;
+  ledPatternParam = param;
 }
 
 // ================================
@@ -99,60 +274,29 @@ int calculateBlinkInterval(int rssi) {
 }
 
 // LED pattern functions
-void singleBlink() {
-  leds[0] = CRGB::Red;
-  FastLED.show();
-  delay(150);
-  leds[0] = CRGB::Black;
-  FastLED.show();
+void startStatusBlinking() {
+  setLEDPattern(LED_STATUS_BLINK);
 }
 
-void tripleBlink() {
-  // Three fast green blinks for new target
-  for (int i = 0; i < 3; i++) {
-    leds[0] = CRGB::Green;
-    FastLED.show();
-    delay(100);
-    leds[0] = CRGB::Black;
-    FastLED.show();
-    if (i < 2) delay(100);
-  }
+void startProximityBlinking(int rssi) {
+  setLEDPattern(LED_PROXIMITY_BLINK, rssi);
 }
 
-void readySignal() {
-  // Blue fade in/out to indicate ready state
-  for (int brightness = 0; brightness <= 255; brightness += 5) {
-    leds[0] = CRGB(0, 0, brightness);
-    FastLED.show();
-    delay(10);
-  }
-  for (int brightness = 255; brightness >= 0; brightness -= 5) {
-    leds[0] = CRGB(0, 0, brightness);
-    FastLED.show();
-    delay(10);
-  }
-  leds[0] = CRGB::Black;
-  FastLED.show();
-  delay(500);
+void stopProximityBlinking() {
+  setLEDPattern(LED_STATUS_BLINK);
+  Serial.println("Proximity blinking stopped, switching to status blink");
 }
 
-void proximityBlink() {
-  // Orange/yellow blink for proximity indication
-  leds[0] = CRGB::Orange;
-  FastLED.show();
-  delay(100);
-  leds[0] = CRGB::Black;
-  FastLED.show();
+void triggerSingleBlink() {
+  setLEDPattern(LED_SINGLE_BLINK);
 }
 
-void handleProximityBlinking() {
-  unsigned long currentTime = millis();
-  int blinkInterval = calculateBlinkInterval(currentRSSI);
+void triggerTripleBlink() {
+  setLEDPattern(LED_TRIPLE_BLINK);
+}
 
-  if (currentTime - lastBlinkTime >= blinkInterval) {
-    proximityBlink();
-    lastBlinkTime = currentTime;
-  }
+void triggerReadySignal() {
+  setLEDPattern(LED_READY_SIGNAL);
 }
 
 // ================================
@@ -423,6 +567,9 @@ void startConfigMode() {
 
   server.begin();
   Serial.println("Web server started!");
+  
+  // Start status blinking in config mode
+  startStatusBlinking();
 }
 
 // ================================
@@ -452,37 +599,19 @@ class MyScanCallbacks : public NimBLEScanCallbacks {
     String deviceMAC = advertisedDevice->getAddress().toString().c_str();
     deviceMAC.toUpperCase();
 
-    // Serial.printf("LOOKING FOR: %s\n", targetMAC.c_str());
-    //  Serial.printf("DETECTED: %s (RSSI: %d)\n", deviceMAC.c_str(), advertisedDevice->getRSSI());
-
     if (deviceMAC == targetMAC) {
       currentRSSI = advertisedDevice->getRSSI();
       lastTargetSeen = millis();
       targetDetected = true;
       newTargetDetected = true;
       Serial.println("*** TARGET MATCH FOUND! ***");
+      Serial.println("MAC: " + deviceMAC + " | RSSI: " + String(currentRSSI));
     }
-  }
-
-  bool isRandomizedVariant(const String& mac) {  // TODO get this working correctly
-    if (mac.length() != 17) return false;        // quick sanity check
-
-    int b0, b1, b2;
-    sscanf(mac.substring(0, 8).c_str(),
-           "%02x:%02x:%02x", &b0, &b1, &b2);
-    uint8_t oui[3] = { (uint8_t)b0, (uint8_t)b1, (uint8_t)b2 };
-
-    // Same vendor OUI?
-    if (memcmp(oui, targetOUI, 3) != 0) return false;
-
-    // Accept either value of the locally-administered bit (bit 1)
-    uint8_t targetFirst = targetOUI[0];
-    uint8_t observedFirst = oui[0];
-    return ((targetFirst & 0xFD) == (observedFirst & 0xFD));
   }
 
   void onScanEnd(const NimBLEScanResults& results, int reason) override {
     Serial.printf("Scan ended, reason: %d, found %d devices\n", reason, results.getCount());
+    // Don't modify the LED pattern here
   }
 };
 
@@ -547,8 +676,84 @@ void startTrackingMode() {
   Serial.println("WiFi scanning started!");
   Serial.println("Dual-core scanning (BLE on Core 1, WiFi on Core 0)");
 
-  // Ready signal
-  readySignal();
+  // Start with status blinking and then show ready signal
+  startStatusBlinking();
+  delay(100);  // Small delay to ensure status pattern is set
+  triggerReadySignal();
+  
+  // Debug verification
+  Serial.printf("LED Pattern set to: %d\n", currentLEDPattern);
+}
+
+// ================================
+// Task Functions
+// ================================
+void bleTask(void* parameter) {
+  Serial.println("BLE scanning task running on Core " + String(xPortGetCoreID()));
+
+  while (true) {
+    if (currentMode == TRACKING_MODE) {
+      // BLE task only needs to monitor when scan completes and restart as needed
+      static unsigned long lastRestartCheck = 0;
+      if (millis() - lastRestartCheck > 30000) {  // Every 30 seconds
+        if (pBLEScan) {
+          pBLEScan->stop();
+          vTaskDelay(50 / portTICK_PERIOD_MS);
+          pBLEScan->start(0, false, true);
+          Serial.println("BLE scan refreshed");
+        }
+        lastRestartCheck = millis();
+      }
+    }
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+  }
+}
+
+void wifiTask(void* parameter) {
+  Serial.println("WiFi scanning task running on Core " + String(xPortGetCoreID()));
+
+  while (true) {
+    if (currentMode == TRACKING_MODE) {
+      unsigned long now = millis();
+
+      // Non-blocking Wi-Fi scan step: one channel per period
+      if (now - lastWifiScanTick >= wifiScanPeriodMs) {
+        lastWifiScanTick = now;
+
+        int ch = wifiChannels[wifiChanIdx];
+        int dwell = timePerChannel[ch - 1];
+
+        // Perform a single-channel scan
+        int found = WiFi.scanNetworks(false, true, false, dwell, ch);
+
+        for (int i = 0; i < found; i++) {
+          String bssid = WiFi.BSSIDstr(i);
+          bssid.toUpperCase();
+          
+          if (normalizeMAC(bssid) == targetMAC) {
+            currentRSSI = WiFi.RSSI(i);
+            lastTargetSeen = millis();
+            targetDetected = true;
+            newTargetDetected = true;
+            Serial.println("*** TARGET MATCH FOUND ON WIFI! ***");
+            Serial.println("SSID: " + WiFi.SSID(i) + ", RSSI: " + String(currentRSSI) + ", Channel: " + String(ch));
+          }
+        }
+
+        // Adaptive tuning if enabled
+        if (adaptiveScan && found > 0) {
+          updateTimePerChannel(ch, found);
+        }
+
+        WiFi.scanDelete();  // Free memory
+        wifiChanIdx = (wifiChanIdx + 1) % wifiChanCount;
+      }
+
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+    } else {
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+  }
 }
 
 // ================================
@@ -557,7 +762,6 @@ void startTrackingMode() {
 void setup() {
   Serial.begin(115200);
   Serial.println("\n=== M5 ATOM LITE FOXHUNT ===");
-  Serial.println("Libraries: ESP32Async v3.8.0, NimBLE 2.4.3");
   Serial.println("Initializing...\n");
 
   // Initialize LED
@@ -572,6 +776,17 @@ void setup() {
   delay(500);
   leds[0] = CRGB::Black;
   FastLED.show();
+
+  // Create LED task on Core 0 (lower priority than WiFi)
+  xTaskCreatePinnedToCore(
+    ledTask,         // Task function
+    "LEDTask",       // Name of task
+    2048,            // Stack size
+    NULL,            // Parameter
+    1,               // Priority
+    &ledTaskHandle,  // Task handle
+    0                // Core 0 (protocol core)
+  );
 
   // MAC randomization for stealth
   uint8_t newMAC[6];
@@ -608,70 +823,6 @@ void setup() {
 }
 
 // ================================
-// Task Functions
-// ================================
-void bleTask(void* parameter) {
-  Serial.println("BLE scanning task running on Core " + String(xPortGetCoreID()));
-
-  while (true) {
-    if (currentMode == TRACKING_MODE) {
-      // BLE task only needs to monitor when scan completes and restart as needed
-      vTaskDelay(500 / portTICK_PERIOD_MS);
-    } else {
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-  }
-}
-
-void wifiTask(void* parameter) {
-  Serial.println("WiFi scanning task running on Core " + String(xPortGetCoreID()));
-
-  while (true) {
-    if (currentMode == TRACKING_MODE) {
-      unsigned long now = millis();
-
-      if (now - lastWifiScanTick >= wifiScanPeriodMs) {
-        lastWifiScanTick = now;
-
-        int ch = wifiChannels[wifiChanIdx];
-        int dwell = timePerChannel[ch - 1];
-
-        // Perform a single-channel scan
-        int found = WiFi.scanNetworks(false, true, false, dwell, ch);
-
-        for (int i = 0; i < found; i++) {
-          String bssid = WiFi.BSSIDstr(i);
-          String ssid = WiFi.SSID(i);
-          int rssi = WiFi.RSSI(i);
-
-          // Check if this is our target device
-          if (normalizeMAC(bssid) == targetMAC) {
-            currentRSSI = rssi;
-            lastTargetSeen = millis();
-            targetDetected = true;
-            newTargetDetected = true;
-            Serial.println("*** TARGET MATCH FOUND ON WIFI! ***");
-            Serial.println("SSID: " + ssid + ", RSSI: " + String(rssi) + ", Channel: " + String(ch));
-          }
-        }
-
-        // Adaptive tuning if enabled
-        if (adaptiveScan) {
-          updateTimePerChannel(ch, found);
-        }
-
-        WiFi.scanDelete();  // Free memory
-        wifiChanIdx = (wifiChanIdx + 1) % wifiChanCount;
-      }
-
-      vTaskDelay(10 / portTICK_PERIOD_MS);
-    } else {
-      vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-  }
-}
-
-// ================================
 // Main Loop Function
 // ================================
 void loop() {
@@ -702,8 +853,12 @@ void loop() {
     // Config mode timeout logic
     int connectedClients = WiFi.softAPgetStationNum();
     if (currentTime - lastConfigActivity > CONFIG_TIMEOUT && connectedClients == 0) {
-      Serial.println("Configuration timeout - switching to tracking mode");
-      startTrackingMode();
+      if (targetMAC.length() == 17) {
+        Serial.println("Configuration timeout - switching to tracking mode");
+        startTrackingMode();
+      } else {
+        Serial.println("No valid target MAC set - remaining in config mode");
+      }
     }
   } else if (currentMode == TRACKING_MODE) {
     // Handle target detection
@@ -711,7 +866,7 @@ void loop() {
       newTargetDetected = false;
 
       if (firstDetection) {
-        tripleBlink();
+        triggerTripleBlink();
         firstDetection = false;
         Serial.println("TARGET ACQUIRED!");
         Serial.println("MAC: " + targetMAC);
@@ -721,12 +876,12 @@ void loop() {
 
     // Handle proximity blinking
     if (targetDetected && (currentTime - lastTargetSeen < 5000)) {
-      handleProximityBlinking();
+      startProximityBlinking(currentRSSI);
     } else if (currentTime - lastTargetSeen >= 5000) {
       targetDetected = false;
       firstDetection = true;
-      leds[0] = CRGB::Black;  // Turn off LED when target lost
-      FastLED.show();
+      // Don't turn LED off - return to status blinking
+      stopProximityBlinking();
     }
   }
 
