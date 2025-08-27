@@ -1,8 +1,19 @@
 # Flock Cameras
 
-**A work in progress, sourced from wigle.net**__
-## Nationwide OUIs
+- Liteon Technology Corporation (Flock AIoT Manufacturer): `14:5a:fc` 
+    
+**A work in progress, sourced from wigle.net**
+
+## Nationwide Camera OUIs
 ```
+04:0d:84
+1c:34:f1
+14:5a:fc
+38:5b:44
+58:8e:81
+90:35:ea
+94:34:69
+b4:e3:f9
 c0:0b:5f
 c0:0b:55
 c0:0c:2c
@@ -440,6 +451,7 @@ c8:67:15
 c8:83:ba
 c8:a0:97
 c8:a2:57
+c8:ae:87
 c8:c1:49
 c9:01:a5
 c9:01:f2
@@ -503,6 +515,7 @@ cb:dd:0b
 cb:df:35
 cb:e0:a2
 cb:f4:a7
+cc:09:24
 cc:1c:d6
 cc:1d:b3
 cc:4a:07
@@ -514,6 +527,7 @@ cc:41:61
 cc:99:ae
 cc:aa:4c
 cc:af:09
+cc:cc:cc
 cc:d2:17
 cc:e8:a3
 cc:f8:94
@@ -715,6 +729,7 @@ d6:e4:87
 d6:f6:96
 d6:f7:2d
 d7:07:56
+d7:2b:21
 d7:5b:86
 d7:6c:7c
 d7:9f:c2
@@ -734,6 +749,7 @@ d8:3d:6a
 d8:4d:5c
 d8:7c:8c
 d8:8e:09
+d8:8f:14
 d8:23:30
 d8:33:e9
 d8:51:4e
@@ -743,6 +759,7 @@ d8:88:cf
 d8:a1:42
 d8:a2:1f
 d8:bb:56
+d8:bf:b5
 d8:dd:a6
 d8:ea:86
 d8:ed:98
@@ -776,6 +793,7 @@ da:72:d1
 da:75:e8
 da:85:22
 da:85:a4
+da:91:a9
 da:91:ed
 da:97:a8
 da:ac:fe
@@ -895,6 +913,7 @@ e0:dd:c9
 e0:e2:8e
 e0:ed:03
 e1:0a:d3
+e1:0e:15
 e1:2b:65
 e1:6f:2f
 e1:7a:60
@@ -925,6 +944,7 @@ e2:13:bd
 e2:26:32
 e2:49:6c
 e2:65:97
+e2:71:33
 e2:92:65
 e2:b8:4f
 e2:d0:2a
@@ -955,6 +975,7 @@ e3:d9:92
 e3:e8:33
 e3:f7:eb
 e3:f9:ee
+e4:1c:9e
 e4:2e:6c
 e4:5f:43
 e4:6e:f2
@@ -1024,6 +1045,7 @@ e7:ca:65
 e7:d9:5e
 e7:d9:74
 e7:da:ae
+e7:f2:43
 e7:fc:4c
 e7:fd:eb
 e8:04:0b
@@ -1036,6 +1058,7 @@ e8:c1:62
 e8:c1:c9
 e8:ca:90
 e8:cb:92
+e8:ce:56
 e8:e2:b2
 e8:f0:61
 e9:02:1e
@@ -1058,10 +1081,12 @@ e9:e3:1d
 e9:e9:80
 e9:f4:6b
 e9:f6:83
+ea:0c:ea
 ea:1d:fb
 ea:2b:6d
 ea:3e:f6
 ea:4a:1e
+ea:5a:98
 ea:29:d3
 ea:33:d9
 ea:50:c0
@@ -1090,6 +1115,7 @@ eb:d9:01
 eb:de:6a
 eb:fa:fc
 ec:0d:bc
+ec:1b:bd
 ec:1e:1b
 ec:5e:f4
 ec:45:a2
@@ -1111,6 +1137,7 @@ ed:20:1d
 ed:90:e6
 ed:ab:27
 ed:ba:64
+ed:c7:63
 ed:d0:d9
 ed:d9:4b
 ed:fd:2d
@@ -1118,6 +1145,7 @@ ee:0b:b8
 ee:0e:12
 ee:3d:e7
 ee:7e:f2
+ee:8f:3c
 ee:28:c8
 ee:36:c7
 ee:36:e4
@@ -1157,6 +1185,7 @@ f0:6d:ec
 f0:44:cc
 f0:57:73
 f0:74:a2
+f0:82:c0
 f0:b1:67
 f0:b8:43
 f0:bf:06
@@ -1171,6 +1200,7 @@ f1:7a:e4
 f1:7e:a3
 f1:8a:39
 f1:9d:9c
+f1:32:f9
 f1:60:ca
 f1:67:fe
 f1:76:c7
@@ -1243,6 +1273,7 @@ f4:90:f1
 f4:a3:29
 f4:a9:5f
 f4:b3:8a
+f4:ed:b2
 f4:f7:e1
 f5:04:f3
 f5:14:c5
@@ -1274,6 +1305,7 @@ f6:32:af
 f6:35:f8
 f6:50:6e
 f6:58:f0
+f6:a0:76
 f6:c2:1d
 f6:e5:0b
 f6:e9:5d
@@ -1344,6 +1376,7 @@ f9:aa:2f
 f9:b6:ec
 f9:bd:c7
 f9:d6:43
+f9:d9:c0
 f9:e1:f0
 f9:f6:9b
 f9:f7:16
