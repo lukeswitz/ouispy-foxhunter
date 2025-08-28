@@ -1,18 +1,36 @@
 # Flock Cameras
-
-- Liteon Technology Corporation (Flock AIoT Manufacturer): `14:5a:fc` 
     
-**A work in progress, sourced from wigle.net**
+**A work in progress, sourced from wigle.net & fellow researchers**
 
 ## Nationwide Camera OUIs
 ```
-04:0d:84
-1c:34:f1
-14:5a:fc
-38:5b:44
+
+// FS Ext Battery devices Credit @colpanichacks
+
 58:8e:81
+cc:cc:cc
+ec:1b:bd
 90:35:ea
+04:0d:84
+f0:82:c0
+1c:34:f1
+38:5b:44
 94:34:69
+b4:e3:f9
+
+// Flock WiFi devices/AIoT Companies Credit @colpanichacks
+
+70:c9:4e
+3c:91:80
+d8:f3:bc
+80:30:49
+14:5a:fc
+74:4c:a1
+08:3a:88
+9c:2f:9d
+
+// BT/BLE Credit wigle.net
+
 b4:e3:f9
 c0:0b:5f
 c0:0b:55
