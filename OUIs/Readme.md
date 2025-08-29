@@ -1,3 +1,11 @@
+## Attribution
+
+Data from IEEE SA Public OUI Registries:
+- https://standards-oui.ieee.org
+- https://wigle.net
+
+Unofficial. Not affiliated with or endorsed by IEEE. No warranty; verify with the canonical sources.
+
 # Disclaimer
 
 This repository contains Organizationally Unique Identifier (OUI) lists for
